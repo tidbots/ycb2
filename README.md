@@ -120,6 +120,8 @@ ls -1 data/synth_coco/coco_data/images/* | wc -l
 - (5) roughness/specular をランダム化
 
 #### 背景について
+「YCB 3Dモデル＋BlenderProc＋cc_textures(PBR)背景」で、合成側を現地っぽく寄せる。
+
 BlenderProcの cc_textures 導入版を使う。
 
 「自前で床/壁の画像を集めなくても、BlenderProcが用意している“現実っぽいPBR素材（床・木・コンクリ等）”を自動ダウンロードして、背景や材質に貼れるようにする運用」
