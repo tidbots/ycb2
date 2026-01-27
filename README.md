@@ -104,6 +104,32 @@ ls -1 data/synth_coco/coco_data/images/* | wc -l
 ```
 補足: Blender/Cyclesの「Loading render kernels」は初回に数分かかることがあります。
 
+
+#### 3つのシーンモードに分けて処理
+- 1. floor_mode：床＋壁、床置き物体（遠めも作る）
+- 2. shelf_mode：棚板＋背板、棚上物体（影が強い）
+- 3. table_mode：テーブル天板、机上（背景テクスチャ変化）
+
+各フレームで mode をランダムに選び、(照明・カメラ・clutter・反射）を適用。
+
+#### （YCB2物体→COCO→YOLO→学習）に追加
+- (1) 背景テクスチャを導入（assets/textures を増やし、床/壁/棚に貼る）
+- (2) 照明を3灯（キー/フィル/逆光）にして色と強さをランダム化
+- (3) 低頻度でブレ/ボケを入れる
+- (4) clutterを2〜6個入れる（プリミティブでOK）
+- (5) roughness/specular をランダム化
+
+#### 背景について
+BlenderProcの cc_textures 導入版を使う。
+
+「自前で床/壁の画像を集めなくても、BlenderProcが用意している“現実っぽいPBR素材（床・木・コンクリ等）”を自動ダウンロードして、背景や材質に貼れるようにする運用」
+
+“CC0 Textures”（現在は Poly Haven 系の無料PBR素材の流れ）みたいな 著作権フリーのテクスチャ素材集を指していて、BlenderProcはそれを blenderproc download cc_textures でまとめて取ってこれます。
+
+しかも PBR（Color/Normal/Roughness/Metallic/Displacement など）が揃うので、ただの画像より 光の当たり方がリアルになります。
+
+
+
 ### 3) COCO → YOLO 変換（train/val split）
 ```
 docker compose run --rm convert
