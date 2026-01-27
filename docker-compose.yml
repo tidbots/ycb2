@@ -78,35 +78,3 @@ services:
         "-lc",
         "yolo detect predict model=/work/runs_ycb2/ycb2_2cls/weights/best.pt source=/work/data/synth_coco/coco_data/images imgsz=640 conf=0.25 device=0 project=/work/runs_ycb2 name=pred_synth save=True"
       ]
-
-  webcam:
-    image: ultralytics/ultralytics:latest
-    working_dir: /work
-    volumes:
-      - ./:/work
-
-    # GPU
-    gpus: all
-    ipc: host
-    shm_size: "2gb"
-
-    # Webカメラ（/dev/video0）をコンテナへ渡す
-    devices:
-      - /dev/video0:/dev/video0
-
-    # 画面表示したい場合（X11）
-    environment:
-      - DISPLAY=${DISPLAY}
-      - QT_X11_NO_MITSHM=1
-    volumes:
-      - ./:/work
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-
-    command:
-      [
-        "bash",
-        "-lc",
-        "yolo detect predict model=/work/runs_ycb2/ycb2_2cls/weights/best.pt source=0 imgsz=640 conf=0.25 device=0 show=True"
-      ]
-
-  
