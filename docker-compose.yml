@@ -7,11 +7,29 @@ services:
     entrypoint: ["/bin/sh", "-lc"]
     command: /work/scripts/ycb_dl_entrypoint.sh
 
+  textures:
+    image: blenderproc/blenderproc:2.7.0
+    working_dir: /work
+    volumes:
+      - ./:/work
+      - ./resources/cctextures:/work/resources/cctextures
+    entrypoint: ["/bin/bash","-lc"]
+    command: >
+      "set -eux;
+       mkdir -p /work/resources/cctextures;
+       if [ -n \"$(ls -A /work/resources/cctextures 2>/dev/null || true)\" ]; then
+         echo 'cc_textures already exists, skip download';
+       else
+         blenderproc download cc_textures /work/resources/cctextures;
+       fi"
+
   synth:
     image: blenderproc/blenderproc:v2
     working_dir: /work
     volumes:
       - ./:/work
+      - ./resources/cctextures:/work/resources/cctextures:ro
+      - /dev/shm:/dev/shm
 #    gpus: all
     ipc: host
     shm_size: "2gb"
