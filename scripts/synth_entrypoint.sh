@@ -3,27 +3,32 @@ set -euo pipefail
 
 # synth_entrypoint.sh
 #
-# This entrypoint runs BlenderProc with our render script.
+# docker compose run --rm synth
+# Env overrides:
+#   N_IMAGES=400 WIDTH=640 HEIGHT=480 SEED=0 \
+#   USE_CC_TEXTURES=1 CC_TEXTURES_DIR=/work/assets/cc_textures \
+#   CC_USED_ASSETS="wood,tiles,concrete,metal" \
+#   PREFER_OPTIX=1 FORCE_TEXTURE=1 DEBUG_PRINT_PATHS=0 \
 #   docker compose run --rm synth
-#
-# Override via env:
-#   N_IMAGES=400 WIDTH=640 HEIGHT=480 docker compose run --rm synth
-#   USE_CC_TEXTURES=1 CC_TEXTURES_DIR=/work/resources/cctextures docker compose run --rm synth
 
 ASSETS_ROOT="${ASSETS_ROOT:-/work/models/ycb}"
 OUT_DIR="${OUT_DIR:-/work/data/synth_coco}"
 
-N_IMAGES="${N_IMAGES:-3}"
+N_IMAGES="${N_IMAGES:-400}"
 WIDTH="${WIDTH:-640}"
 HEIGHT="${HEIGHT:-480}"
+SEED="${SEED:-0}"
 
 # Flags (0/1)
 FORCE_TEXTURE="${FORCE_TEXTURE:-1}"
-DEBUG_PRINT_PATHS="${DEBUG_PRINT_PATHS:-1}"
+DEBUG_PRINT_PATHS="${DEBUG_PRINT_PATHS:-0}"
+PREFER_OPTIX="${PREFER_OPTIX:-1}"
 
-# cc_textures (PBR) background
+# cc_textures (PBR)
 USE_CC_TEXTURES="${USE_CC_TEXTURES:-1}"
-CC_TEXTURES_DIR="${CC_TEXTURES_DIR:-/work/resources/cctextures}"
+CC_TEXTURES_DIR="${CC_TEXTURES_DIR:-/work/assets/cc_textures}"
+CC_USED_ASSETS="${CC_USED_ASSETS:-}"   # comma-separated, e.g. "wood,tiles,concrete"
+USE_ALL_CC_MATERIALS="${USE_ALL_CC_MATERIALS:-0}"  # 1: load everything (heavy)
 
 # Optional extra args
 EXTRA_ARGS="${EXTRA_ARGS:-}"
@@ -35,7 +40,12 @@ args=(
   --n_images "${N_IMAGES}"
   --width "${WIDTH}"
   --height "${HEIGHT}"
+  --seed "${SEED}"
 )
+
+if [[ "${PREFER_OPTIX}" == "1" ]]; then
+  args+=( --prefer_optix )
+fi
 
 if [[ "${FORCE_TEXTURE}" == "1" ]]; then
   args+=( --force_texture )
@@ -46,22 +56,14 @@ if [[ "${DEBUG_PRINT_PATHS}" == "1" ]]; then
 fi
 
 if [[ "${USE_CC_TEXTURES}" == "1" ]]; then
-  if [[ ! -d "${CC_TEXTURES_DIR}" ]]; then
-    echo "[synth_entrypoint] ERROR: CC_TEXTURES_DIR not found: ${CC_TEXTURES_DIR}" >&2
-    echo "[synth_entrypoint] Hint: run 'docker compose run --rm textures' first (or download cc_textures)." >&2
-    exit 2
-  fi
-  # empty dir check (non-fatal but useful)
-  if [[ -z "$(ls -A "${CC_TEXTURES_DIR}" 2>/dev/null || true)" ]]; then
-    echo "[synth_entrypoint] WARNING: CC_TEXTURES_DIR is empty: ${CC_TEXTURES_DIR}" >&2
-    echo "[synth_entrypoint] Hint: run 'docker compose run --rm textures' to download cc_textures." >&2
-  fi
   args+=( --use_cc_textures --cc_textures_dir "${CC_TEXTURES_DIR}" )
+  if [[ -n "${CC_USED_ASSETS}" ]]; then
+    args+=( --cc_used_assets "${CC_USED_ASSETS}" )
+  fi
+  if [[ "${USE_ALL_CC_MATERIALS}" == "1" ]]; then
+    args+=( --use_all_cc_materials )
+  fi
 fi
 
-# Show what we will run (useful for logs)
-echo "[synth_entrypoint] blenderproc ${args[*]} ${EXTRA_ARGS}"
-
-# Exec BlenderProc
-# NOTE: EXTRA_ARGS may contain multiple tokens, so keep it unquoted at the end.
+echo "[synth_entrypoint] blenderproc ${args[*]}"
 exec blenderproc "${args[@]}" ${EXTRA_ARGS}
