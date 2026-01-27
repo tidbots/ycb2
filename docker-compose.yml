@@ -1,0 +1,80 @@
+services:
+  ycb_dl:
+    image: alpine:3.20
+    working_dir: /work
+    volumes:
+      - ./:/work
+    entrypoint: ["/bin/sh", "-lc"]
+    command: /work/scripts/ycb_dl_entrypoint.sh
+
+  synth:
+    image: blenderproc/blenderproc:v2
+    working_dir: /work
+    volumes:
+      - ./:/work
+#    gpus: all
+    ipc: host
+    shm_size: "2gb"
+    security_opt:
+      - seccomp=unconfined
+    environment:
+      - TMPDIR=/work/.tmp
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
+    entrypoint: ["/bin/bash", "-lc"]
+    command: /work/scripts/synth_entrypoint.sh
+
+  convert:
+    image: ultralytics/ultralytics:latest
+    working_dir: /work
+    volumes:
+      - ./:/work
+    command:
+      [
+        "bash",
+        "-lc",
+        "python3 /work/scripts/coco_to_yolo_split.py --coco /work/data/synth_coco/coco_data/coco_annotations.json --image_dir /work/data/synth_coco/coco_data/images --out_dir /work/dataset/ycb2_yolo --train_ratio 0.8 --seed 0"
+      ]
+
+
+
+  train:
+    image: ultralytics/ultralytics:latest
+    working_dir: /work
+
+    # プロジェクトを丸ごと見せる（dataset/, data/, scripts/ をコンテナから同じパスで参照）
+    volumes:
+      - ./:/work
+
+    # 速く・安定のため
+    ipc: host
+    shm_size: "8gb"
+
+    # GPU使用（Compose v2）
+    gpus: all
+
+    # （任意）キャッシュを永続化したいなら有効化
+    # volumes:
+    #   - ./:/work
+    #   - ./_ultralytics_cache:/root/.cache/ultralytics
+
+    command:
+      [
+    "bash",
+    "-lc",
+    "yolo detect train model=yolo26s.pt data=/work/dataset/ycb2_yolo/data.yaml imgsz=640 epochs=50 batch=16 device=0 workers=8 project=/work/runs_ycb2 name=ycb2_2cls"
+      ]
+  predict:
+    image: ultralytics/ultralytics:latest
+    working_dir: /work
+    volumes:
+      - ./:/work
+    ipc: host
+    shm_size: "8gb"
+    gpus: all
+    command:
+      [
+        "bash",
+        "-lc",
+        "yolo detect predict model=/work/runs_ycb2/ycb2_2cls/weights/best.pt source=/work/data/synth_coco/coco_data/images imgsz=640 conf=0.25 device=0 project=/work/runs_ycb2 name=pred_synth save=True"
+      ]

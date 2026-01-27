@@ -1,0 +1,6 @@
+path: /work/dataset/ycb2_yolo
+train: images/train
+val: images/val
+names:
+- 002_master_chef_can
+- 003_cracker_box
