@@ -1,2 +1,4 @@
 runs_ycb2/
+data/
+dataset/
 *.jpg
