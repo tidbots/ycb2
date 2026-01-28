@@ -28,7 +28,7 @@ services:
     working_dir: /work
     volumes:
       - ./:/work
-      - ./resources/cctextures:/work/resources/cctextures:ro
+      - ./resources/cctextures:/work/resources/cctextures
       - /dev/shm:/dev/shm
 #    gpus: all
     ipc: host

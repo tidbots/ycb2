@@ -14,7 +14,7 @@ set -euo pipefail
 ASSETS_ROOT="${ASSETS_ROOT:-/work/models/ycb}"
 OUT_DIR="${OUT_DIR:-/work/data/synth_coco}"
 
-N_IMAGES="${N_IMAGES:-400}"
+N_IMAGES="${N_IMAGES:-3}"
 WIDTH="${WIDTH:-640}"
 HEIGHT="${HEIGHT:-480}"
 SEED="${SEED:-0}"
@@ -56,7 +56,10 @@ if [[ "${DEBUG_PRINT_PATHS}" == "1" ]]; then
 fi
 
 if [[ "${USE_CC_TEXTURES}" == "1" ]]; then
-  args+=( --use_cc_textures --cc_textures_dir "${CC_TEXTURES_DIR}" )
+  # cc_textures は dir を渡すだけで有効化
+if [[ -n "${CC_TEXTURES_DIR:-}" ]]; then
+  args+=( --cc_textures_dir "${CC_TEXTURES_DIR}" )
+fi
   if [[ -n "${CC_USED_ASSETS}" ]]; then
     args+=( --cc_used_assets "${CC_USED_ASSETS}" )
   fi

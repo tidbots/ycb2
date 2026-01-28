@@ -1,18 +1,22 @@
-import blenderproc as bproc  # MUST be the first import for BlenderProc
+import blenderproc as bproc  # MUST be the first import for BlenderProc (no shebang/docstring above!)
 
-"""
-render_ycb2_coco.py (Py3.8 compatible)
-
-YCB (OBJ+MTL+PNG) -> synthetic RGB + COCO (bbox/seg) generator with BlenderProc.
-
-Adds cc_textures (ambientCG) PBR background option:
-- --use_cc_textures --cc_textures_dir <dir>
-- Randomize background material per frame for domain randomization.
-
-Robust YCB texture handling:
-- chdir to OBJ folder before import (helps relative MTL/PNG)
-- optional --force_texture: wire textured.png to Principled BSDF directly
-"""
+# render_ycb2_coco.py (Py3.8 + Blender 2.93 compatible)
+#
+# YCB (OBJ+MTL+PNG) -> synthetic RGB + COCO (bbox/seg) generator with BlenderProc.
+# + Optional CC Textures (PBR) background randomization for "more realistic" floor/wall.
+#
+# Notes:
+# - Do NOT put shebang or a module docstring before the blenderproc import.
+# - Python 3.8 compatible: avoid `X | None` typing.
+#
+# Example:
+# blenderproc run /work/scripts/render_ycb2_coco.py \
+#   --assets_root /work/models/ycb \
+#   --out_dir /work/data/synth_coco \
+#   --n_images 400 --width 640 --height 480 \
+#   --force_texture \
+#   --cc_textures_dir /work/resources/cctextures \
+#   --cc_used_assets "Asphalt020"
 
 import argparse
 import os
@@ -21,6 +25,8 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 
 import numpy as np
+
+# bpy is available inside BlenderProc's Blender Python
 import bpy
 
 
@@ -31,6 +37,7 @@ YCB_DEFAULT_OBJECTS: List[Tuple[str, int]] = [
 
 
 def find_textured_obj(assets_root: Path, obj_name: str) -> Tuple[Path, Optional[Path]]:
+    """Find a YCB textured.obj and (optionally) textured.png near it."""
     candidates = [
         assets_root / obj_name / obj_name / "tsdf" / "textured.obj",
         assets_root / obj_name / obj_name / "poisson" / "textured.obj",
@@ -43,6 +50,7 @@ def find_textured_obj(assets_root: Path, obj_name: str) -> Tuple[Path, Optional[
 
 
 def force_apply_png_texture(bp_obj, png_path: Path) -> None:
+    """Force-assign textured.png via nodes (robust when MTL relative paths fail)."""
     bo = bp_obj.blender_obj
     img = bpy.data.images.load(str(png_path), check_existing=True)
 
@@ -76,6 +84,7 @@ def force_apply_png_texture(bp_obj, png_path: Path) -> None:
 
 
 def setup_cycles_gpu(prefer_optix: bool) -> None:
+    """Try to enable Cycles GPU rendering. If not possible, Blender may fall back to CPU."""
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
     scene.cycles.device = "GPU"
@@ -83,8 +92,8 @@ def setup_cycles_gpu(prefer_optix: bool) -> None:
     try:
         prefs = bpy.context.preferences
         cycles_prefs = prefs.addons["cycles"].preferences
-        try_order = ["OPTIX", "CUDA"] if prefer_optix else ["CUDA", "OPTIX"]
 
+        try_order = ["OPTIX", "CUDA"] if prefer_optix else ["CUDA", "OPTIX"]
         for backend in try_order:
             try:
                 cycles_prefs.compute_device_type = backend
@@ -102,65 +111,30 @@ def setup_cycles_gpu(prefer_optix: bool) -> None:
         print("[GPU] Cycles GPU setup exception:", e)
 
 
-def set_exposure_random(frame_i: int, base: float = 0.0, jitter: float = 0.6) -> None:
-    # Blender view settings exposure
-    exp = float(np.random.uniform(base - jitter, base + jitter))
-    bpy.context.scene.view_settings.exposure = exp
-
-
-def make_plane(size: float = 3.0):
+def make_plane(name: str, size: float, location: List[float], rotation_euler: List[float]):
     plane = bproc.object.create_primitive("PLANE", scale=[size, size, 1.0])
-    plane.set_location([0, 0, 0])
-    plane.set_rotation_euler([0, 0, 0])
+    plane.set_name(name)
+    plane.set_location(location)
+    plane.set_rotation_euler(rotation_euler)
     return plane
 
 
-def set_plane_solid_color(plane, rgb: Tuple[float, float, float]) -> None:
-    mat = bproc.material.create(name="bg_solid")
+def set_plane_flat_color(plane, rgb: Tuple[float, float, float]) -> None:
+    mat = bproc.material.create(name="bg_flat_mat")
     mat.set_principled_shader_value("Base Color", [rgb[0], rgb[1], rgb[2], 1.0])
     mat.set_principled_shader_value("Roughness", 0.9)
     plane.replace_materials(mat)
 
 
-def make_lights(n: int) -> List[bproc.types.Light]:
-    lights: List[bproc.types.Light] = []
-    for _ in range(n):
-        l = bproc.types.Light()
-        # POINT / AREA を混ぜる
-        l.set_type("POINT" if random.random() < 0.7 else "AREA")
-        l.set_energy(200.0)
-        l.set_location([1.0, -1.0, 2.0])
-        lights.append(l)
-    return lights
+def make_point_light():
+    light = bproc.types.Light()
+    light.set_type("POINT")
+    light.set_energy(200.0)
+    light.set_location([1.0, -1.0, 2.0])
+    return light
 
 
-def randomize_lights(lights: List[bproc.types.Light], frame_i: int) -> None:
-    for l in lights:
-        l.set_location(
-            [
-                float(np.random.uniform(-1.5, 1.5)),
-                float(np.random.uniform(-1.5, 1.5)),
-                float(np.random.uniform(1.2, 3.0)),
-            ],
-            frame=frame_i,
-        )
-        l.set_energy(float(np.random.uniform(80.0, 450.0)), frame=frame_i)
-        # 色味（白〜やや暖色/寒色）
-        col = [
-            float(np.random.uniform(0.85, 1.0)),
-            float(np.random.uniform(0.85, 1.0)),
-            float(np.random.uniform(0.85, 1.0)),
-        ]
-        l.set_color(col, frame=frame_i)
-
-
-def sample_cam_pose_look_at(
-    poi: np.ndarray,
-    r_min: float,
-    r_max: float,
-    z_min: float,
-    z_max: float,
-) -> np.ndarray:
+def sample_cam_pose_look_at(poi: np.ndarray, r_min: float, r_max: float, z_min: float, z_max: float) -> np.ndarray:
     theta = np.random.uniform(0, 2 * np.pi)
     r = np.random.uniform(r_min, r_max)
     x = r * np.cos(theta)
@@ -174,37 +148,96 @@ def sample_cam_pose_look_at(
     return cam2world
 
 
-def parse_cc_used_assets(s: str) -> Optional[List[str]]:
-    # "wood,tiles,concrete" -> ["wood","tiles","concrete"]
-    s = (s or "").strip()
+def parse_csv_names(s: Optional[str]) -> Optional[List[str]]:
+    if s is None:
+        return None
+    s = s.strip()
     if not s:
         return None
     return [x.strip() for x in s.split(",") if x.strip()]
 
 
+def load_cc_materials(cc_dir: Path, allow_names: Optional[List[str]], debug: bool):
+    """
+    Load CC Textures materials using BlenderProc helper.
+    It expects cc_dir to contain many subfolders (e.g., Asphalt020) with PBR texture files inside.
+    """
+    if not cc_dir.exists():
+        raise FileNotFoundError("cc_textures_dir does not exist: {}".format(cc_dir))
+
+    # Quick sanity: list subfolders
+    subdirs = sorted([p for p in cc_dir.iterdir() if p.is_dir()])
+    if debug:
+        print("[CC] cc_dir:", cc_dir)
+        print("[CC] subdirs:", [p.name for p in subdirs[:30]], ("..." if len(subdirs) > 30 else ""))
+
+    if allow_names is not None:
+        wanted = set(allow_names)
+        subdirs = [p for p in subdirs if p.name in wanted]
+        if debug:
+            print("[CC] filtered subdirs:", [p.name for p in subdirs])
+
+    # If folders exist but empty, BlenderProc loader will yield nothing → catch early
+    any_files = False
+    for d in subdirs:
+        if any(d.glob("*")):
+            any_files = True
+            break
+    if not any_files:
+        raise RuntimeError(
+            "cc_textures_dir has no files under selected folders. "
+            "Example selected folder is empty: {}. "
+            "Did you run: blenderproc download cc_textures {} ?".format(
+                (subdirs[0].as_posix() if subdirs else cc_dir.as_posix()),
+                cc_dir.as_posix(),
+            )
+        )
+
+    # BlenderProc loader: loads all materials it can find under cc_dir
+    # (If you only downloaded a few folders, it's fast.)
+    mats = bproc.loader.load_ccmaterials(str(cc_dir))
+    if allow_names is not None:
+        # keep only those whose material name contains folder name (robust-ish)
+        filtered = []
+        for m in mats:
+            mname = getattr(m, "get_name", None)
+            nm = m.get_name() if callable(mname) else str(m)
+            if any(a in nm for a in allow_names):
+                filtered.append(m)
+        mats = filtered
+
+    if len(mats) == 0:
+        raise RuntimeError("No CC materials loaded from {} (after filtering).".format(cc_dir))
+
+    if debug:
+        try:
+            names = [m.get_name() for m in mats[:20]]
+            print("[CC] loaded materials (sample):", names, ("..." if len(mats) > 20 else ""))
+        except Exception:
+            print("[CC] loaded materials count:", len(mats))
+
+    return mats
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--assets_root", required=True)
-    ap.add_argument("--out_dir", required=True)
+    ap.add_argument("--assets_root", required=True, help="Path to models/ycb (download root).")
+    ap.add_argument("--out_dir", required=True, help="Output directory.")
     ap.add_argument("--n_images", type=int, default=400)
     ap.add_argument("--width", type=int, default=640)
     ap.add_argument("--height", type=int, default=480)
     ap.add_argument("--seed", type=int, default=0)
-
-    ap.add_argument("--prefer_optix", action="store_true")
-    ap.add_argument("--force_texture", action="store_true")
-    ap.add_argument("--only_single_object", action="store_true")
-
+    ap.add_argument("--prefer_optix", action="store_true", help="Prefer OPTIX over CUDA.")
+    ap.add_argument("--force_texture", action="store_true", help="Force-apply textured.png via nodes.")
+    ap.add_argument("--only_single_object", action="store_true", help="Render only one object per frame.")
     ap.add_argument("--radius_min", type=float, default=0.6)
     ap.add_argument("--radius_max", type=float, default=1.0)
-
     ap.add_argument("--debug_print_paths", action="store_true")
 
-    # cc_textures (ambientCG) background
-    ap.add_argument("--use_cc_textures", action="store_true")
-    ap.add_argument("--cc_textures_dir", type=str, default="")
-    ap.add_argument("--cc_used_assets", type=str, default="")  # comma-separated
-    ap.add_argument("--use_all_cc_materials", action="store_true")
+    # CC Textures (PBR) backgrounds
+    ap.add_argument("--use_cc_textures", action="store_true", help="(compat) If set, enable CC textures (requires --cc_textures_dir).")
+    ap.add_argument("--cc_textures_dir", type=str, default=None, help="Path to cc_textures root dir.")
+    ap.add_argument("--cc_used_assets", type=str, default=None, help='Comma list of folder names to prefer, e.g. "Asphalt020,WoodFloor041".')
 
     args = ap.parse_args()
 
@@ -218,46 +251,41 @@ def main():
 
     bproc.init()
     bproc.camera.set_resolution(args.width, args.height)
+
     setup_cycles_gpu(prefer_optix=args.prefer_optix)
 
-    # Stage
-    plane = make_plane(size=3.0)
+    # Stage: floor + (optional) wall
+    floor = make_plane("floor", size=3.0, location=[0, 0, 0], rotation_euler=[0, 0, 0])
+    wall = make_plane("wall", size=3.0, location=[0, 1.3, 1.0], rotation_euler=[np.pi / 2.0, 0, 0])
 
-    cc_mats = None  # type: Optional[List]
-    if args.use_cc_textures:
-        cc_dir = args.cc_textures_dir.strip()
-        if not cc_dir:
-            raise ValueError("--use_cc_textures set but --cc_textures_dir is empty")
-        used_assets = parse_cc_used_assets(args.cc_used_assets)
-        print("[CC] Loading cc_textures from:", cc_dir)
-        cc_mats = bproc.loader.load_ccmaterials(
-            folder_path=cc_dir,
-            used_assets=used_assets,
-            use_all_materials=args.use_all_cc_materials,
-            skip_transparent_materials=True,
-        )
-        print("[CC] Loaded materials:", len(cc_mats))
-        if len(cc_mats) == 0:
-            raise RuntimeError("No cc_textures materials loaded. Check directory and naming.")
-        # 初期マテリアルを一つ当てる
-        plane.replace_materials(random.choice(cc_mats))
+    light = make_point_light()
+
+    # Decide background material strategy
+    cc_mats = None
+    want_cc = args.use_cc_textures or (args.cc_textures_dir is not None)
+    cc_allow = parse_csv_names(args.cc_used_assets)
+
+    if want_cc:
+        if args.cc_textures_dir is None:
+            raise RuntimeError("--use_cc_textures was set but --cc_textures_dir is missing.")
+        cc_dir = Path(args.cc_textures_dir).resolve()
+        cc_mats = load_cc_materials(cc_dir, cc_allow, debug=args.debug_print_paths)
     else:
-        set_plane_solid_color(plane, (0.9, 0.9, 0.85))
+        # fallback flat color
+        set_plane_flat_color(floor, (0.9, 0.9, 0.85))
+        set_plane_flat_color(wall, (0.92, 0.92, 0.95))
 
-    lights = make_lights(n=2)
-
-    # Load YCB
+    # Load objects
     loaded = []  # list of (bp_obj, name, cat_id)
     for name, cat_id in YCB_DEFAULT_OBJECTS:
         obj_path, png_path = find_textured_obj(assets_root, name)
-
         if args.debug_print_paths:
             print("[YCB] {}: obj={} png={}".format(name, obj_path, png_path))
 
+        # Key trick: chdir to OBJ folder so mtllib/map_Kd relative paths resolve
         prev_cwd = os.getcwd()
         os.chdir(str(obj_path.parent))
         try:
-            # Blender 2.93 importer supports use_image_search
             bp_objs = bproc.loader.load_obj(str(obj_path), use_image_search=True)
         finally:
             os.chdir(prev_cwd)
@@ -265,47 +293,65 @@ def main():
         for bp_obj in bp_objs:
             bp_obj.set_cp("category_id", int(cat_id))
             bp_obj.set_name(name)
+
             if args.force_texture and png_path is not None:
                 try:
                     force_apply_png_texture(bp_obj, png_path)
                 except Exception as e:
-                    print("[WARN] force_texture failed for {}: {}".format(name, e))
+                    print("[WARN] force texture failed for {}: {}".format(name, e))
+
             loaded.append((bp_obj, name, cat_id))
 
     hide_loc = np.array([1000.0, 1000.0, 1000.0])
     poi = np.array([0.0, 0.0, 0.08])
 
+    # Per-frame randomization + camera poses
     for i in range(args.n_images):
-        # Background randomization (cc_textures)
+        # Background materials
         if cc_mats is not None:
-            plane.replace_materials(random.choice(cc_mats))
-            # 床の回転を少し振る（同じマテでも見え方を変える）
-            plane.set_rotation_euler([0.0, 0.0, float(np.random.uniform(-np.pi, np.pi))], frame=i)
+            mat = random.choice(cc_mats)
+            floor.replace_materials(mat)
+            # wall: either same or another random (same gives coherent scene)
+            if random.random() < 0.7:
+                wall.replace_materials(mat)
+            else:
+                wall.replace_materials(random.choice(cc_mats))
+        else:
+            # tiny jitter in flat colors
+            c1 = float(np.random.uniform(0.85, 0.95))
+            c2 = float(np.random.uniform(0.85, 0.95))
+            set_plane_flat_color(floor, (c1, c1, c2))
+            set_plane_flat_color(wall, (c2, c2, c1))
 
-        # Light randomization
-        randomize_lights(lights, frame_i=i)
+        # Lighting randomization (strength + color)
+        light.set_location(
+            [
+                float(np.random.uniform(-1.2, 1.2)),
+                float(np.random.uniform(-1.2, 1.2)),
+                float(np.random.uniform(1.2, 2.5)),
+            ],
+            frame=i,
+        )
+        light.set_energy(float(np.random.uniform(80.0, 320.0)), frame=i)
 
-        # Exposure randomization
-        set_exposure_random(i, base=0.0, jitter=0.7)
-
-        # choose 1 or 2 objects
+        # Choose 1 or 2 objects
         if args.only_single_object:
             chosen = [random.choice(loaded)]
         else:
             k = 1 if random.random() < 0.5 else 2
             chosen = random.sample(loaded, k=min(k, len(loaded)))
 
-        # hide all
+        # Hide all
         for bp_obj, _, _ in loaded:
             bp_obj.set_location(hide_loc.tolist(), frame=i)
 
-        # place chosen with simple separation
+        # Place chosen with simple separation
         positions: List[np.ndarray] = []
         for bp_obj, _, _ in chosen:
             pos = None
             for _try in range(50):
-                x = np.random.uniform(-0.28, 0.28)
-                y = np.random.uniform(-0.28, 0.28)
+                x = np.random.uniform(-0.25, 0.25)
+                y = np.random.uniform(-0.25, 0.25)
                 z = np.random.uniform(0.01, 0.03)
                 p = np.array([x, y, z])
                 if all(np.linalg.norm(p - q) > 0.18 for q in positions):
@@ -332,7 +378,7 @@ def main():
     data = bproc.renderer.render()
     seg = bproc.renderer.render_segmap(map_by=["instance", "class", "name"])
 
-    # COCO writer
+    # Write COCO
     bproc.writer.write_coco_annotations(
         str(coco_dir),
         instance_segmaps=seg["instance_segmaps"],
@@ -343,12 +389,9 @@ def main():
 
     print("[OK] Wrote COCO dataset to:", coco_dir)
     print("     - coco_annotations.json")
-    print("     - rgb_*.jpg")
-
-    print("[TIP] Check output:")
-    print("  ls -1 {}/*.jpg | head".format(coco_dir))
-    print("  ls -lh {}/coco_annotations.json".format(coco_dir))
+    print("     - images (JPEG) + masks/segmaps")
 
 
 if __name__ == "__main__":
     main()
+
