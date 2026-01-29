@@ -1,0 +1,21 @@
+{
+  "ycb": {
+    "models_root": "/ycb/models/ycb"
+  },
+
+  "backgrounds": {
+    "train_glob": "train/*.*",
+    "val_glob": "val/*.*",
+    "allow_ext": [".jpg", ".jpeg", ".png", ".webp"]
+  },
+
+  "textures": {
+    "cc_textures_root": "/work/resources/cctextures",
+    "enable_cc_textures": true
+  },
+
+  "output": {
+    "coco_json": "coco_annotations.json",
+    "images_dir": "images"
+  }
+}

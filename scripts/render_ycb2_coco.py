@@ -376,6 +376,28 @@ def main():
 
     # Render
     data = bproc.renderer.render()
+    # --- after: data = bproc.renderer.render() ---
+    import imageio.v2 as imageio
+
+    img_dir = os.path.join(args.out_dir, "coco_data", "images")
+    os.makedirs(img_dir, exist_ok=True)
+
+    colors = data.get("colors", None)
+    if colors is None or len(colors) == 0:
+        raise RuntimeError("No RGB images in data['colors']. Rendering produced no color buffers.")
+
+    # colors: list of HxWx3 float32 in [0,1] or uint8
+    for i, img in enumerate(colors, start=1):
+        out_path = os.path.join(img_dir, f"rgb_{i:04d}.jpg")
+        if img.dtype != np.uint8:
+            img8 = np.clip(img * 255.0, 0, 255).astype(np.uint8)
+        else:
+            img8 = img
+        imageio.imwrite(out_path, img8, quality=95)
+
+# make COCO writer use our saved filenames (relative to coco root)
+# (We will pass image paths explicitly when writing.)
+
     seg = bproc.renderer.render_segmap(map_by=["instance", "class", "name"])
 
     # Write COCO
@@ -394,4 +416,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

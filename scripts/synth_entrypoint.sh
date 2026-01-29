@@ -14,7 +14,7 @@ set -euo pipefail
 ASSETS_ROOT="${ASSETS_ROOT:-/work/models/ycb}"
 OUT_DIR="${OUT_DIR:-/work/data/synth_coco}"
 
-N_IMAGES="${N_IMAGES:-3}"
+N_IMAGES="${N_IMAGES:-1000}"
 WIDTH="${WIDTH:-640}"
 HEIGHT="${HEIGHT:-480}"
 SEED="${SEED:-0}"

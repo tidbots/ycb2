@@ -3,3 +3,5 @@ runs_ycb2/
 data/
 dataset/
 weights/
+resources/
+out/

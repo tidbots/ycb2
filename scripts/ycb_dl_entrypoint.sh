@@ -5,6 +5,5 @@ set -eux
 apk add --no-cache curl tar
 
 # YCB 2物体をHTTP直リンクでDL＆展開
-# ycb_download_2objs_http.shを編集してダウンロードする物体を増やせる
 /work/scripts/ycb_download_2objs_http.sh
 

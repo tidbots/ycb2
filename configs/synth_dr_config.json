@@ -1,0 +1,51 @@
+{
+  "background_plane": {
+    "enable": true,
+    "prob": 0.85,
+    "fit_mode": "cover",
+    "min_short_side_px": 720
+  },
+
+  "lighting": {
+    "enable": true,
+    "key_energy": [300, 1500],
+    "fill_energy": [50, 600],
+    "rim_energy": [50, 800],
+    "color_jitter": 0.20,
+    "elev_deg": [15, 65],
+    "dist": [1.2, 2.8]
+  },
+
+  "occlusion": {
+    "enable": true,
+    "prob": 0.35,
+    "num_occluders": [0, 2],
+    "size_ratio": [0.08, 0.28],
+    "shape": ["rect", "rect", "ellipse"]
+  },
+
+  "degrade": {
+    "enable": true,
+    "blur_prob": 0.12,
+    "blur_radius": [0.6, 2.0],
+    "defocus_prob": 0.10,
+    "defocus_radius": [0.8, 2.5],
+    "noise_prob": 0.18,
+    "noise_sigma": [3.0, 18.0],
+    "jpeg_prob": 0.55,
+    "jpeg_quality": [45, 95]
+  },
+
+  "material_random": {
+    "enable": true,
+    "prob": 0.5,
+    "roughness": [0.05, 0.95],
+    "specular": [0.0, 0.8],
+    "metallic": [0.0, 0.4]
+  },
+
+  "export": {
+    "image_ext": "jpg",
+    "jpg_quality": 92
+  }
+}

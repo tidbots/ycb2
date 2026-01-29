@@ -1,0 +1,55 @@
+{
+  "seed": 0,
+
+  "ycb_root": "/work/models/ycb",
+
+  "mesh_preference": ["tsdf"],
+
+  "classes": [
+    "002_master_chef_can",
+    "003_cracker_box"
+  ],
+
+  "image_width": 640,
+  "image_height": 480,
+
+  "num_images": 200,
+  "min_objects_per_image": 1,
+  "max_objects_per_image": 4,
+
+  "camera": {
+    "fx": 600.0,
+    "fy": 600.0,
+    "cx": 320.0,
+    "cy": 240.0,
+
+    "loc_min": [-0.6, -0.6, 0.45],
+    "loc_max": [ 0.6,  0.6, 1.10],
+
+    "inplane_rot_min": -0.6,
+    "inplane_rot_max":  0.6
+  },
+
+  "table": {
+    "size": 1.4,
+    "height": 0.75
+  },
+
+  "resources": {
+    "cctextures_root": "/work/resources/cctextures",
+    "backgrounds_train_glob": "/work/assets/backgrounds/train/*.*",
+    "backgrounds_val_glob": "/work/assets/backgrounds/val/*.*"
+  },
+
+  "render": {
+    "engine": "CYCLES",
+    "samples": 32,
+    "use_denoise": true
+  },
+
+  "export": {
+    "image_ext": "jpg",
+    "jpg_quality": 90
+  }
+}
+
